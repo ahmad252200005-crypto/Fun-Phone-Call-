@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ar" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fun Phone Call - Pro Edition</title>
+    <!-- مكتبة Socket.io للاتصال بالخادم -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        :root { --primary-orange: #e68a00; --dark-bg: #1a1a1a; --glass-bg: rgba(255, 255, 255, 0.1); --text-main: #ffffff; --text-muted: #cccccc; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: var(--dark-bg); display: flex; justify-content: center; align-items: center; min-height: 100vh; color: var(--text-main); overflow: hidden; }
+        .app-container { width: 100%; max-width: 400px; height: 100vh; max-height: 850px; background: linear-gradient(135deg, #2a1b0a 0%, #5c3a10 100%); display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        .status-bar { padding: 10px 20px; display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); background: rgba(0,0,0,0.3); }
+        .header { padding: 20px; text-align: center; position: relative; }
+        .header h1 { font-size: 24px; font-weight: 700; letter-spacing: 1px; }
+        .connection-status { text-align: center; font-size: 13px; color: #ff4444; font-weight: bold; margin-top: 5px; display: flex; justify-content: center; align-items: center; gap: 5px; }
+        .connection-status.connected { color: #4caf50; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background-color: currentColor; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        .form-group { padding: 0 20px; margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 14px; font-weight: bold; margin-bottom: 8px; color: var(--primary-orange); }
+        .input-wrapper { display: flex; background: var(--glass-bg); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; overflow: hidden; }
+        .input-wrapper input { flex: 1; background: transparent; border: none; padding: 14px 15px; font-size: 16px; color: var(--text-main); outline: none; }
+        .input-wrapper input::placeholder { color: rgba(255,255,255,0.4); }
+        .input-wrapper .action-btn { background: var(--primary-orange); border: none; padding: 0 20px; color: white; font-size: 18px; cursor: pointer; }
+        .toggle-group { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; background: var(--glass-bg); border-top: 1px solid rgba(255,255,255,0.1); border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; }
+        .voice-section { padding: 0 20px; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+        .voice-section h3 { font-size: 16px; margin-bottom: 25px; text-align: center; color: var(--text-muted); }
+        input[type="range"] { -webkit-appearance: none; width: 100%; height: 12px; border-radius: 6px; background: linear-gradient(90deg, #4caf50, #ffeb3b, #f44336); outline: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 35px; height: 35px; border-radius: 50%; background: var(--primary-orange); border: 3px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .slider-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-top: 8px; padding: 0 10px; }
+        .try-btn { background: transparent; border: 1px solid var(--primary-orange); color: var(--primary-orange); padding: 10px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; display: block; margin: 10px auto; transition: all 0.3s; }
+        .try-btn.active { background: var(--primary-orange); color: white; }
+        .call-btn { margin: 20px; padding: 20px; background: linear-gradient(135deg, var(--primary-orange), #ff6f00); border: none; border-radius: 15px; color: white; font-size: 22px; font-weight: bold; cursor: pointer; box-shadow: 0 8px 20px rgba(230, 138, 0, 0.4); }
+        .call-btn:active { transform: translateY(2px); }
+        .balance-msg { text-align: center; color: #ff4444; font-size: 13px; font-weight: bold; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <div class="status-bar">
+            <span id="clock">--:--</span>
+            <span>📶 🔋 100%</span>
+        </div>
+
+        <div class="header">
+            <h1>Fun Phone Call</h1>
+            <div class="connection-status" id="connStatus">
+                <span class="status-dot"></span> Not connected
+            </div>
+        </div>
+
+        <!-- حقل معرفي (يستخدم كرقم هاتفي) -->
+        <div class="form-group">
+            <label>My ID (Your Number):</label>
+            <div class="input-wrapper">
+                <input type="text" id="myNumber" value="" placeholder="Enter your ID (e.g., 111)">
+                <button class="action-btn" id="registerBtn">✅</button>
+            </div>
+        </div>
+
+        <!-- حقل الرقم المستهدف -->
+        <div class="form-group">
+            <label>Phone:</label>
+            <div class="input-wrapper">
+                <input type="tel" id="targetNumber" placeholder="Number to call" inputmode="numeric">
+                <button class="action-btn">➡️</button>
+            </div>
+        </div>
+
+        <div class="toggle-group">
+            <span>Record this call</span>
+            <input type="checkbox" id="recordCall" style="width: 20px; height: 20px; accent-color: var(--primary-orange);">
+        </div>
+
+        <div class="voice-section">
+            <h3>Select your voice:</h3>
+            <div class="slider-container">
+                <input type="range" id="pitchSlider" min="-12" max="12" value="0" step="1">
+                <div class="slider-labels">
+                    <span>High (👤)</span>
+                    <span>Normal</span>
+                    <span>Low (👤)</span>
+                </div>
+            </div>
+            <button class="try-btn" id="tryBtn">🎤 Try Voice</button>
+        </div>
+
+        <div class="balance-msg">You are out of minutes</div>
+        <button class="call-btn" id="callBtn">CALL ➡️</button>
+    </div>
+
+    <!-- عنصر صوتي مخفي لاستقبال صوت الطرف الآخر -->
+    <audio id="remoteAudio" autoplay></audio>
+
+    <script>
+        // --- 1. الاتصال بالخادم المحلي ---
+        const socket = io('https://fun-phone-server.onrender.com');
+        
+        let audioContext;
+        let microphoneStream;
+        let mediaStreamSource;
+        let highPassFilter, lowPassFilter;
+        let isTrying = false;
+        let peerConnection;
+        let currentCallerId = null;
+
+        const pitchSlider = document.getElementById('pitchSlider');
+        const tryBtn = document.getElementById('tryBtn');
+        const callBtn = document.getElementById('callBtn');
+        const connStatus = document.getElementById('connStatus');
+        const myNumberInput = document.getElementById('myNumber');
+        const registerBtn = document.getElementById('registerBtn');
+        const remoteAudio = document.getElementById('remoteAudio');
+
+        const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+        // --- 2. إدارة الوقت ---
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').textContent = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        }
+        setInterval(updateClock, 1000); updateClock();
+
+        // --- 3. تحديث الفلاتر الصوتية ---
+        function updateAudioFilters(pitchValue) {
+            if (!highPassFilter || !lowPassFilter) return;
+            if (pitchValue < 0) {
+                highPassFilter.frequency.value = 300 + (Math.abs(pitchValue) * 100);
+                lowPassFilter.frequency.value = 8000;
+            } else if (pitchValue > 0) {
+                highPassFilter.frequency.value = 100;
+                lowPassFilter.frequency.value = 2000 - (pitchValue * 100);
+            } else {
+                highPassFilter.frequency.value = 100;
+                lowPassFilter.frequency.value = 8000;
+            }
+        }
+
+        // --- 4. تسجيل المستخدم في الخادم ---
+        registerBtn.onclick = () => {
+            const userId = myNumberInput.value.trim();
+            if (!userId) return alert('الرجاء إدخال معرف خاص بك (مثل رقم)');
+            socket.emit('register', userId);
+            connStatus.innerHTML = `<span class="status-dot"></span> Registered as ${userId}`;
+            connStatus.classList.add('connected');
+            registerBtn.textContent = '✅';
+            registerBtn.disabled = true;
+            myNumberInput.disabled = true;
+        };
+
+        // --- 5. معالجة الصوت المحلي (Try) ---
+        tryBtn.onclick = async () => {
+            if (isTrying) { stopTrying(); return; }
+            try {
+                microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                mediaStreamSource = audioContext.createMediaStreamSource(microphoneStream);
+                highPassFilter = audioContext.createBiquadFilter(); highPassFilter.type = 'highpass';
+                lowPassFilter = audioContext.createBiquadFilter(); lowPassFilter.type = 'lowpass';
+                mediaStreamSource.connect(highPassFilter); highPassFilter.connect(lowPassFilter); lowPassFilter.connect(audioContext.destination);
+                updateAudioFilters(parseFloat(pitchSlider.value));
+                isTrying = true; tryBtn.textContent = '⏹ Stop Voice'; tryBtn.classList.add('active');
+            } catch (error) { alert('خطأ في الوصول للميكروفون: ' + error.message); }
+        };
+
+        function stopTrying() {
+            if (microphoneStream) microphoneStream.getTracks().forEach(track => track.stop());
+            if (audioContext) audioContext.close();
+            isTrying = false; tryBtn.textContent = '🎤 Try Voice'; tryBtn.classList.remove('active');
+        }
+
+        pitchSlider.addEventListener('input', (e) => { if (isTrying) updateAudioFilters(parseFloat(e.target.value)); });
+
+        // --- 6. منطق WebRTC (المكالمة الفعلية) ---
+        async function getProcessedAudioStream() {
+            const rawStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const source = ctx.createMediaStreamSource(rawStream);
+            const hp = ctx.createBiquadFilter(); hp.type = 'highpass';
+            const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+            
+            const val = parseFloat(pitchSlider.value);
+            if (val < 0) { hp.frequency.value = 300 + (Math.abs(val) * 100); lp.frequency.value = 8000; }
+            else if (val > 0) { hp.frequency.value = 100; lp.frequency.value = 2000 - (val * 100); }
+            else { hp.frequency.value = 100; lp.frequency.value = 8000; }
+
+            const dest = ctx.createMediaStreamDestination();
+            source.connect(hp); hp.connect(lp); lp.connect(dest);
+            window.outgoingAudioContext = ctx; 
+            return dest.stream;
+        }
+
+        async function createPeerConnection(targetSocketId) {
+            peerConnection = new RTCPeerConnection(rtcConfig);
+            const processedStream = await getProcessedAudioStream();
+            processedStream.getTracks().forEach(track => peerConnection.addTrack(track, processedStream));
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) socket.emit('ice-candidate', { targetSocketId: targetSocketId, candidate: event.candidate });
+            };
+            peerConnection.ontrack = (event) => { remoteAudio.srcObject = event.streams[0]; };
+            return peerConnection;
+        }
+
+        callBtn.onclick = async () => {
+            const targetId = document.getElementById('targetNumber').value.trim();
+            const myId = myNumberInput.value.trim();
+            if (!targetId || !myId) return alert('الرجاء إدخال رقمك ورقم الوجهة.');
+            if (isTrying) stopTrying();
+
+            connStatus.innerHTML = `<span class="status-dot"></span> Calling ${targetId}...`;
+            const pc = await createPeerConnection(targetId);
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            socket.emit('call-user', { targetId: targetId, callerId: myId, offer: offer });
+        };
+
+        // --- 7. أحداث Socket.io ---
+        socket.on('incoming-call', async (data) => {
+            const { callerId, offer } = data;
+            if (confirm(`📞 مكالمة واردة من: ${callerId}\nهل تريد الرد؟`)) {
+                currentCallerId = callerId;
+                const pc = await createPeerConnection(socket.id); 
+                await pc.setRemoteDescription(new RTCSessionDescription(offer));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                socket.emit('answer-call', { callerSocketId: socket.id, answer: answer });
+                connStatus.innerHTML = `<span class="status-dot"></span> In Call with ${callerId}`;
+            }
+        });
+
+        socket.on('call-accepted', async (data) => {
+            if (peerConnection) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                connStatus.innerHTML = `<span class="status-dot"></span> Connected`;
+                connStatus.classList.add('connected');
+            }
+        });
+
+        socket.on('ice-candidate', async (data) => {
+            if (peerConnection) await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        });
+
+        socket.on('call-error', (data) => {
+            alert(data.message);
+            connStatus.innerHTML = `<span class="status-dot"></span> Ready`;
+        });
+    </script>
+</body>
+</html>
